@@ -15,7 +15,7 @@ import src.utils as utils
 if config.data_source == 'MNIST':
     data_source = MNIST(config.batch_size)
 elif config.data_source == 'SVHN':
-    data_source = SVHN(config.batch_size)
+    data_source = SVHN(config.data_dir_path, config.batch_size)
 elif config.data_source == 'STL':
     data_source = STL(config.batch_size)
 else:
@@ -24,7 +24,7 @@ else:
 if config.data_target == 'MNIST':
     data_target = MNIST(config.batch_size)
 elif config.data_target == 'SVHN':
-    data_target = SVHN(config.batch_size)
+    data_target = SVHN(config.data_dir_path, config.batch_size)
 elif config.data_target == 'STL':
     data_target = STL(config.batch_size)
 else:

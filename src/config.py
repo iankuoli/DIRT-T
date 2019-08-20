@@ -4,6 +4,7 @@ datasets = ['MNIST', 'SVHN', 'STL', 'CIFAR10']
 
 model_used = models[0]
 
+data_dir_path = "/home/ian/Dataset/SVHN"
 data_source = datasets[0]
 data_target = datasets[1]
 
