@@ -233,7 +233,6 @@ def stack_blocks_dense(net, blocks, output_stride=None,
           if output_stride is not None and current_stride == output_stride:
             net = block.unit_fn(net, rate=rate, **dict(unit, stride=1))
             rate *= unit.get('stride', 1)
-
           else:
             net = block.unit_fn(net, rate=1, **unit)
             current_stride *= unit.get('stride', 1)
