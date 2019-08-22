@@ -32,7 +32,7 @@ class BasicBlock(layers.Layer):
         out = self.conv2(out)
         out = self.bn2(out)
 
-        identity = self.downsample(inputs)
+        identity = self.down_sample(inputs)
 
         # The critical idea of ResNet, adding the residual
         output = layers.add([out, identity])
@@ -51,10 +51,10 @@ class ResNet(keras.Model):
         super(ResNet, self).__init__()
 
         # Layer for pre-processing, MAXPool2D can be added or not
-        self.pre_layer = Sequential([layers.Conv2D(64, (3, 3), strides=(1, 1)),
-                                     layers.BatchNormalization(),
-                                     layers.Activation('relu'),
-                                     layers.MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')])
+        self.pre_conv = layers.Conv2D(64, (3, 3), strides=(1, 1))
+        self.pre_bn = layers.BatchNormalization()
+        self.act = layers.Activation('relu')
+        self.maxpool = layers.MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')
 
         # Construct the 4 blocks individually
         self.layer1 = self.build_resblock(64, layer_dims[0])
@@ -67,7 +67,10 @@ class ResNet(keras.Model):
 
     def call(self, inputs, training=None):
 
-        x = self.pre_layer(inputs)
+        x = self.pre_conv(inputs)
+        x = self.pre_bn(x)
+        x = self.act(x)
+        x = self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)
@@ -99,17 +102,17 @@ class ResNet(keras.Model):
         return res_blocks
 
 
-def resnet18():
-    return ResNet([2, 2, 2, 2])
+def resnet18(num_classes, training=None):
+    return ResNet([2, 2, 2, 2], num_classes=num_classes)
 
 
-def resnet34():
-    return ResNet([3, 4, 6, 3])
+def resnet34(num_classes):
+    return ResNet([3, 4, 6, 3], num_classes=num_classes)
 
 
-def resnet50():
-    return ResNet([3, 4, 6, 3])
+def resnet50(num_classes):
+    return ResNet([3, 4, 6, 3], num_classes=num_classes)
 
 
-def resnet101():
-    return ResNet([3, 4, 23, 3])
+def resnet101(num_classes):
+    return ResNet([3, 4, 23, 3], num_classes=num_classes)

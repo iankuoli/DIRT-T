@@ -11,7 +11,7 @@ data_target = datasets[1]
 display_step = 10
 
 batch_size = 256
-dim_embed = (64, 64)
+dim_input = (32, 32)
 dim_embed = 64
 num_classes = 10
 

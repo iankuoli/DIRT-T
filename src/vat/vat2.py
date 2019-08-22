@@ -39,7 +39,12 @@ def generate_virtual_adversarial_perturbation(x, logit, forward, xi=1e-8, num_po
             tape.watch(d)
             d = xi * get_normalized_vector(d)
             logit_p = logit
-            logit_m = forward(x + d, is_training=is_training)
+
+            x = x + d
+            for i in range(len(forward)):
+                x = forward[i](x, training=is_training)
+            logit_m = x
+
             if len(logit_m) == 1:
                 dist = kl_divergence_with_logit(logit_p, logit_m)
             else:
@@ -70,7 +75,12 @@ def virtual_adversarial_loss(x, logit, forward, xi=1e-8, num_power_iterations=1,
                                                        forward_index=forward_index)
     logit = tf.stop_gradient(logit)
     logit_p = logit
-    logit_m = forward(x + r_vadv, is_training=is_training)
+
+    x = x + r_vadv
+    for i in range(len(forward)):
+        x = forward[i](x, training=is_training)
+    logit_m = x
+
     if len(logit_m) == 1:
         loss = kl_divergence_with_logit(logit_p, logit_m)
     else:

@@ -5,15 +5,37 @@ from src.datasets import STL
 import src.config as config
 
 import tensorflow as tf
+import tensorflow.keras as keras
 import src.vat.vat2 as vat
 import src.utils as utils
+
+from src.models.resnet import resnet18
+from src.models.cnn_model import ConvNet
+from src.models.fcn import FCN
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Limiting GPU memory growth
+#
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    # Restrict TensorFlow to only use the first GPU
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Visible devices must be set before GPUs have been initialized
+        print(e)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Load Datasets
 # 
 if config.data_source == 'MNIST':
-    data_source = MNIST(config.batch_size)
+    data_source = MNIST(config.batch_size, image_size=config.dim_input)
 elif config.data_source == 'SVHN':
     data_source = SVHN(config.data_dir_path, config.batch_size)
 elif config.data_source == 'STL':
@@ -22,7 +44,7 @@ else:
     data_source = CIFAR10(config.batch_size)
 
 if config.data_target == 'MNIST':
-    data_target = MNIST(config.batch_size)
+    data_target = MNIST(config.batch_size, image_size=config.dim_input)
 elif config.data_target == 'SVHN':
     data_target = SVHN(config.data_dir_path, config.batch_size)
 elif config.data_target == 'STL':
@@ -30,16 +52,31 @@ elif config.data_target == 'STL':
 else:
     data_target = CIFAR10(config.batch_size)
 
-train_data = tf.data.Dataset.zip((data_source, data_target))
+train_data = tf.data.Dataset.zip((data_source.train_data, data_target.train_data))
 data_size = max(data_source.train_size, data_target.train_size)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Model and Optimizer Declaration
 #
-modelF = model1(dim_input=config.dim_input, dim_embed=config.dim_embed)
-modelG = model2(dim_embed=config.dim_embed, num_classes=config.num_classes)
-modelD = model3(dim_embed=config.dim_embed, num_classes=2)
+class Adaptor2D(keras.Model):
+
+    def __init__(self, num_kernels):
+        super(Adaptor2D, self).__init__()
+
+        self.adaptor = tf.keras.layers.Conv2D(num_kernels, (1, 1), padding='same')
+
+    def call(self, x, training=None):
+        return self.adaptor(x)
+
+
+src_input_adaptor = Adaptor2D(3)
+tar_input_adaptor = Adaptor2D(3)
+
+#modelF = resnet18(100)
+modelF = ConvNet(100)
+modelG = FCN([24], 10)
+modelD = FCN([50, 12], 1)
 
 optimizer = tf.optimizers.Adam(config.learning_rate)
 
@@ -47,38 +84,42 @@ optimizer = tf.optimizers.Adam(config.learning_rate)
 # ----------------------------------------------------------------------------------------------------------------------
 # Optimization Process
 #
-def get_pred_n_loss(source_x, source_y, target_x):
+def get_pred_n_loss(src_x, src_y, tar_x):
 
-    source_embed = modelF(source_x, is_training=True)
-    target_embed = modelF(target_x, is_training=True)
+    src_x = src_input_adaptor(src_x)
+    tar_x = tar_input_adaptor(tar_x)
 
-    source_pred = modelG(source_embed, is_training=True)
-    target_pred = modelG(target_embed, is_training=True)
+    src_embed = modelF(src_x, training=True)
+    target_embed = modelF(tar_x, training=True)
 
-    source_dis = modelD(source_embed, is_training=True)
-    target_dis = modelD(source_embed, is_training=True)
+    src_pred = modelG(src_embed, softmax=True, training=True)
+    tar_pred = modelG(target_embed, softmax=True, training=True)
 
-    loss_y = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=source_y, logits=source_pred)
-    loss_d = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.ones_like(source_dis), logits=source_dis) + \
-             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.zeros_like(target_dis), logits=target_dis)
+    src_dis = modelD(src_embed, softmax=False, training=True)
+    tar_dis = modelD(target_embed, softmax=False, training=True)
+
+    loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
+    loss_d = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) + \
+                            tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(tar_dis), logits=tar_dis))
 
     if config.model_used == 'VATA' or 'DIRT-T':
-        loss_c = - tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_pred, logits=target_pred)
-        loss_v_s = vat.virtual_adversarial_loss(source_x, source_pred, modelG(modelF),
+        ccc = tf.nn.softmax_cross_entropy_with_logits(labels=tar_pred, logits=tar_pred)
+        loss_c = tf.reduce_mean(ccc)
+        loss_v_s = vat.virtual_adversarial_loss(src_x, src_pred, [src_input_adaptor, modelF, modelG],
                                                 xi=config.xi, epsilon=config.epsilon, is_training=False)
-        loss_v_t = vat.virtual_adversarial_loss(target_x, target_pred, modelG(modelF),
+        loss_v_t = vat.virtual_adversarial_loss(tar_x, tar_pred, [tar_input_adaptor, modelF, modelG],
                                                 xi=config.xi, epsilon=config.epsilon, is_training=False)
-        return source_pred, target_pred, loss_y, loss_d, loss_c, loss_v_s, loss_v_t
+        return src_pred, tar_pred, loss_y, loss_d, loss_c, loss_v_s, loss_v_t
     else:
-        return source_pred, target_pred, loss_y, loss_d
+        return src_pred, tar_pred, loss_y, loss_d
 
 
-def run_optimization(source_x, source_y, target_x, lambda_d=0.1):
+def run_optimization(src_x, src_y, tar_x, lambda_d=0.1):
 
     # Wrap computation inside a GradientTape for automatic differentiation.
     with tf.GradientTape() as g:
 
-        rets = get_pred_n_loss(source_x, source_y, target_x)
+        rets = get_pred_n_loss(src_x, src_y, tar_x)
         loss_y = rets[2]
         loss_d = rets[3]
         loss = loss_y + lambda_d * loss_d
@@ -90,7 +131,8 @@ def run_optimization(source_x, source_y, target_x, lambda_d=0.1):
             loss += config.lambda_s * loss_v_s + config.lambda_t * (loss_v_t + loss_c)
 
     # Variables to update, i.e. trainable variables.
-    trainable_variables = [modelF.trainable_variables, modelG.trainable_variables, modelD.trainable_variables]
+    trainable_variables = src_input_adaptor.trainable_variables + tar_input_adaptor.trainable_variables + \
+                          modelF.trainable_variables + modelG.trainable_variables + modelD.trainable_variables
 
     # Compute gradients.
     gradients = g.gradient(loss, trainable_variables)

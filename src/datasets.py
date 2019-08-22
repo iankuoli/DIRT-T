@@ -5,6 +5,7 @@ from tensorflow.keras.datasets import cifar10
 import os
 import urllib.request
 from scipy.io import loadmat
+import cv2
 
 
 # Convert to float32 and Normalize images value from [0, 255] to [0, 1].
@@ -15,15 +16,20 @@ def data_normalize(x_train, x_test):
 
 
 class MNIST(object):
-    def __init__(self, batch_size):
+    def __init__(self, batch_size, image_size=None):
 
         # MNIST dataset parameters. Total classes (0-9 digits).
         self.num_classes = 10
 
         # Prepare MNIST data.
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
+        if image_size is not None:
+            x_train = np.asarray(list(map(lambda x: cv2.resize(x, image_size, interpolation=cv2.INTER_CUBIC), x_train)))
+            x_test = np.asarray(list(map(lambda x: cv2.resize(x, image_size, interpolation=cv2.INTER_CUBIC), x_test)))
         x_train, x_test = np.array(x_train, np.float32), np.array(x_test, np.float32)
+        x_train = tf.expand_dims(x_train, -1)
+        x_test = tf.expand_dims(x_test, -1)
+
         x_train, x_test = data_normalize(x_train, x_test)
         y_train, y_test = np.array(y_train, np.int32), np.array(y_test, np.int32)
 
@@ -32,8 +38,8 @@ class MNIST(object):
 
         self.train_data = train_data.repeat().shuffle(5000).batch(batch_size).prefetch(1)
         self.test_data = tf.data.Dataset.from_tensor_slices((x_test, y_test)).prefetch(1)
-        self.train_size = x_train[0]
-        self.test_size = x_test[0]
+        self.train_size = x_train.shape[0]
+        self.test_size = x_test.shape[0]
 
 
 class SVHN(object):
