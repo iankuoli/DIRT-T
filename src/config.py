@@ -1,12 +1,12 @@
 
-models = ['VAT', 'VADA', 'DIRT-T']
+models = ['UDA', 'VADA', 'DIRT-T']
 datasets = ['MNIST', 'SVHN', 'STL', 'CIFAR10']
 
-model_used = models[0]
+model_used = models[1]
 
 data_dir_path = "/home/ian/Dataset/SVHN"
-data_source = datasets[0]
-data_target = datasets[1]
+data_source = datasets[1]
+data_target = datasets[0]
 
 display_step = 10
 
@@ -16,13 +16,15 @@ dim_embed = 64
 num_classes = 10
 
 # Hyper-parameter for Domain Adaptation
-lambda_d = 0.1
-lambda_s = 0.1
-lambda_t = 0.1
-learning_rate = 1e-6
+lambda_d = 1
+lambda_s = 1
+lambda_t = 1
+learning_rate = 1e-4
 
 # Hyper-parameters for VAT
-xi = 1e-8
-epsilon = 8.
+src_xi = 8.
+src_epsilon = 1e-6
+tar_xi = 8.
+tar_epsilon = 1
 
 

@@ -75,32 +75,18 @@ tar_input_adaptor = Adaptor2D(3)
 
 modelF = ConvNet(100)
 modelG = FCN([24], 10)
-modelD = FCN([50, 12], 1)
+modelD = FCN([50, 12], 2)
 
-optimizer = tf.optimizers.Adam(config.learning_rate)
+adpt_optimizer = tf.optimizers.Adam(config.learning_rate)
+dis_optimizer = tf.optimizers.Adam(config.learning_rate)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Optimization Process
 #
-def get_pred_n_loss(src_x, src_y, tar_x):
+def get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x):
 
-    src_x = src_input_adaptor(src_x)
-    tar_x = tar_input_adaptor(tar_x)
-
-    src_embed = modelF(src_x, training=True)
-    target_embed = modelF(tar_x, training=True)
-
-    src_pred = modelG(src_embed, softmax=True, training=True)
-    tar_pred = modelG(target_embed, softmax=True, training=True)
-
-    src_dis = modelD(src_embed, softmax=False, training=True)
-    tar_dis = modelD(target_embed, softmax=False, training=True)
-
-    if len(src_y.shape) == 1:
-        loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
-    else:
-        loss_y = tf.reduce_mean((tf.nn.softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
+    loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
     loss_d = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) + \
                             tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(tar_dis), logits=tar_dis))
 
@@ -118,29 +104,52 @@ def get_pred_n_loss(src_x, src_y, tar_x):
 
 def run_optimization(src_x, src_y, tar_x, lambda_d=0.1):
 
-    # Wrap computation inside a GradientTape for automatic differentiation.
-    with tf.GradientTape() as g:
+    # ------------------------------------------------------------------------------------------------------------------
+    # Model Adaptation
+    #
+    src_x = src_input_adaptor(src_x)
+    tar_x = tar_input_adaptor(tar_x)
 
-        rets = get_pred_n_loss(src_x, src_y, tar_x)
+    src_embed = modelF(src_x, training=True)
+    target_embed = modelF(tar_x, training=True)
+
+    src_pred = modelG(src_embed, activate='softmax', training=True)
+    tar_pred = modelG(target_embed, activate='softmax', training=True)
+
+    src_dis = modelD(src_embed, activate='sigmoid', training=True)
+    tar_dis = modelD(target_embed, activate='sigmoid', training=True)
+
+    # Wrap computation inside a GradientTape for automatic differentiation.
+    with tf.GradientTape() as adpt_tape, tf.GradientTape() as dis_tape:
+
+        '''
+        rets = get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x)
         loss_y = rets[2]
         loss_d = rets[3]
-        loss = loss_y + lambda_d * loss_d
+        loss = loss_y - lambda_d * loss_d
 
         if config.model_used == 'VADA' or 'DIRT-T':
             loss_c = rets[4]
             loss_v_s = rets[5]
             loss_v_t = rets[6]
             loss += config.lambda_s * loss_v_s + config.lambda_t * (loss_v_t + loss_c)
+        '''
+
+        dis_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) + \
+                                  tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(tar_dis), logits=tar_dis))
 
     # Variables to update, i.e. trainable variables.
-    trainable_variables = src_input_adaptor.trainable_variables + tar_input_adaptor.trainable_variables + \
-                          modelF.trainable_variables + modelG.trainable_variables + modelD.trainable_variables
+    #trainable_variables = src_input_adaptor.trainable_variables + tar_input_adaptor.trainable_variables + \
+    #                      modelF.trainable_variables + modelG.trainable_variables
+
+    dis_gradients = dis_tape.gradient(dis_loss, modelD.trainable_variables)
+    dis_optimizer.apply_gradients(zip(dis_gradients, modelD.trainable_variables))
 
     # Compute gradients.
-    gradients = g.gradient(loss, trainable_variables)
+    #adpt_gradients = adpt_tape.gradient(loss, trainable_variables)
+    #adpt_optimizer.apply_gradients(zip(adpt_gradients, trainable_variables))
 
-    # Update W and b following gradients.
-    optimizer.apply_gradients(zip(gradients, trainable_variables))
+
 
 
 # Run training for the given number of steps.

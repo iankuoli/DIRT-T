@@ -15,10 +15,12 @@ class FCN(keras.Model):
 
         self.fco = layers.Dense(num_classes)
 
-    def call(self, x, softmax=True, training=None):
+    def call(self, x, activate='softmax', training=None):
         x = self.fcn(x)
         x = self.fco(x)
-        if softmax:
+        if activate == 'softmax':
             x = tf.nn.softmax(x)
+        elif activate == 'sigmoid':
+            x = tf.nn.sigmoid(x)
 
         return x
