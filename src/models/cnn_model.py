@@ -42,10 +42,6 @@ class ConvNet(Model):
         # Apply Dropout (if is_training is False, dropout is not applied).
         self.dropout2 = layers.Dropout(rate=0.5)
 
-        # Output layer, class prediction.
-        self.out = layers.Dense(num_classes, use_bias=False,
-                                kernel_regularizer=regularizers.l2(0.01))
-
     # Set forward pass.
     def call(self, x, training=False):
 
@@ -58,17 +54,5 @@ class ConvNet(Model):
         x = self.dropout1(x, training=training)
         x = self.fc2(x)
         embed = self.dropout2(x, training=training)
-        out = self.out(embed)
-
-        if self.use_loss == 'arcface':
-            embed_unit = tf.nn.l2_normalize(embed, axis=1)
-            weights_unit = tf.nn.l2_normalize(self.out.weights[0], axis=1)
-            cos_t = tf.matmul(embed_unit, weights_unit, name='cos_t')
-            out = cos_t * self.cos_scale
-
-        if not training:
-            # tf cross entropy expect logits without softmax, so only
-            # apply softmax when not training.
-            out = tf.nn.softmax(out)
 
         return embed

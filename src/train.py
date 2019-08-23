@@ -73,7 +73,6 @@ class Adaptor2D(keras.Model):
 src_input_adaptor = Adaptor2D(3)
 tar_input_adaptor = Adaptor2D(3)
 
-#modelF = resnet18(100)
 modelF = ConvNet(100)
 modelG = FCN([24], 10)
 modelD = FCN([50, 12], 1)
@@ -98,17 +97,20 @@ def get_pred_n_loss(src_x, src_y, tar_x):
     src_dis = modelD(src_embed, softmax=False, training=True)
     tar_dis = modelD(target_embed, softmax=False, training=True)
 
-    loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
+    if len(src_y.shape) == 1:
+        loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
+    else:
+        loss_y = tf.reduce_mean((tf.nn.softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
     loss_d = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) + \
                             tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(tar_dis), logits=tar_dis))
 
-    if config.model_used == 'VATA' or 'DIRT-T':
+    if config.model_used == 'VADA' or 'DIRT-T':
         ccc = tf.nn.softmax_cross_entropy_with_logits(labels=tar_pred, logits=tar_pred)
         loss_c = tf.reduce_mean(ccc)
         loss_v_s = vat.virtual_adversarial_loss(src_x, src_pred, [src_input_adaptor, modelF, modelG],
-                                                xi=config.xi, epsilon=config.epsilon, is_training=False)
+                                                xi=config.src_xi, epsilon=config.src_epsilon, is_training=False)
         loss_v_t = vat.virtual_adversarial_loss(tar_x, tar_pred, [tar_input_adaptor, modelF, modelG],
-                                                xi=config.xi, epsilon=config.epsilon, is_training=False)
+                                                xi=config.tar_xi, epsilon=config.tar_epsilon, is_training=False)
         return src_pred, tar_pred, loss_y, loss_d, loss_c, loss_v_s, loss_v_t
     else:
         return src_pred, tar_pred, loss_y, loss_d
@@ -124,7 +126,7 @@ def run_optimization(src_x, src_y, tar_x, lambda_d=0.1):
         loss_d = rets[3]
         loss = loss_y + lambda_d * loss_d
 
-        if config.model_used == 'VATA' or 'DIRT-T':
+        if config.model_used == 'VADA' or 'DIRT-T':
             loss_c = rets[4]
             loss_v_s = rets[5]
             loss_v_t = rets[6]
@@ -160,13 +162,13 @@ for step, ((batch_src_x, batch_src_y), (batch_tar_x, batch_tar_y)) in enumerate(
         batch_src_acc = utils.accuracy(batch_src_pred, batch_src_y)
 
         loss = loss_y + config.lambda_d * loss_d
-        if config.model_used == 'VATA' or 'DIRT-T':
+        if config.model_used == 'VADA' or 'DIRT-T':
             loss_c = rets[4]
             loss_v_s = rets[5]
             loss_v_t = rets[6]
             loss += config.lambda_s * loss_v_s + config.lambda_t * (loss_v_t + loss_c)
-            print("step: %i, loss: %f, loss_y: %f, loss_d: %f, loss_c: %f, , loss_v_t: %f, , loss_v_s: %f" %
-                  (step, loss, loss_y, loss_d, loss_c, loss_v_s, loss_v_t))
+            print("step: %i, loss: %f, loss_y: %f, loss_d: %f, loss_v_s: %f, , loss_v_t: %f, loss_c: %f" %
+                  (step, loss, loss_y, loss_d, loss_v_s, loss_v_t, loss_c))
         else:
             print("step: %i, loss: %f, loss_y: %f, loss_d: %f" %
                   (step, loss, loss_y, loss_d))

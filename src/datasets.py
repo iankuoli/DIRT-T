@@ -71,7 +71,7 @@ class SVHN(object):
         x_test, y_test = self.change_format(test)
 
         x_train, x_test = data_normalize(x_train, x_test)
-        y_train, y_test = np.array(y_train, np.int32), np.array(y_test, np.int32)
+        y_train, y_test = tf.argmax(y_train, 1), tf.argmax(y_test, 1)
 
         # Use tf.data API to shuffle and batch data.
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))

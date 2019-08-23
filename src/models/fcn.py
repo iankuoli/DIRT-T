@@ -19,6 +19,6 @@ class FCN(keras.Model):
         x = self.fcn(x)
         x = self.fco(x)
         if softmax:
-            x = tf.nn.relu(x)
+            x = tf.nn.softmax(x)
 
         return x
