@@ -17,8 +17,9 @@ num_classes = 10
 
 # Hyper-parameter for Domain Adaptation
 lambda_d = 1
-lambda_s = 1
-lambda_t = 1
+lambda_s = 0.1
+lambda_t = 0.1
+beta_t = 10
 learning_rate = 1e-4
 
 # Hyper-parameters for VAT
