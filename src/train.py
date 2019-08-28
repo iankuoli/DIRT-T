@@ -8,7 +8,6 @@ import tensorflow.keras as keras
 import src.vat.vat2 as vat
 import src.utils as utils
 
-from src.models.resnet import resnet18
 from src.models.cnn_model import ConvNet
 from src.models.fcn import FCN
 import src.config as config
@@ -86,8 +85,8 @@ dis_optimizer = tf.optimizers.Adam(config.learning_rate)
 def get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x):
 
     loss_y = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(labels=src_y, logits=src_pred)))
-    loss_d = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) + \
-                            tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(tar_dis), logits=tar_dis))
+    loss_d = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(src_dis), logits=src_dis) + \
+                            tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(tar_dis), logits=tar_dis))
 
     if config.model_used == 'VADA' or 'DIRT-T':
         ccc = tf.nn.softmax_cross_entropy_with_logits(labels=tar_pred, logits=tar_pred)
@@ -124,7 +123,7 @@ def vada_optimization(src_x, src_y, tar_x, lambda_d=0.1):
         rets = get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x)
         loss_y = rets[2]
         loss_d = rets[3]
-        loss = loss_y - lambda_d * loss_d
+        loss = loss_y + lambda_d * loss_d
 
         if config.model_used == 'VADA' or 'DIRT-T':
             loss_c = rets[4]
