@@ -31,7 +31,7 @@ class MNIST(object):
         x_test = tf.expand_dims(x_test, -1)
 
         x_train, x_test = data_normalize(x_train, x_test)
-        y_train, y_test = np.array(y_train, np.int32), np.array(y_test, np.int32)
+        y_train, y_test = np.array(y_train, np.int64), np.array(y_test, np.int64)
 
         # Use tf.data API to shuffle and batch data.
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
