@@ -78,6 +78,8 @@ modelD = FCN([50, 12], 1)
 adpt_optimizer = tf.optimizers.Adam(config.learning_rate)
 dis_optimizer = tf.optimizers.Adam(config.learning_rate)
 
+ema = tf.train.ExponentialMovingAverage(decay=0.998)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Optimization Process
@@ -89,15 +91,14 @@ def get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x):
                             tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(tar_dis), logits=tar_dis))
 
     if config.model_used == 'VADA' or 'DIRT-T':
-        ccc = tf.nn.softmax_cross_entropy_with_logits(labels=tar_pred, logits=tar_pred)
-        loss_c = tf.reduce_mean(ccc)
+        loss_c = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=tar_pred, logits=tar_pred))
         loss_v_s = vat.virtual_adversarial_loss(src_x, src_pred, [src_input_adaptor, modelF, modelG],
                                                 xi=config.src_xi, epsilon=config.src_epsilon, is_training=False)
         loss_v_t = vat.virtual_adversarial_loss(tar_x, tar_pred, [tar_input_adaptor, modelF, modelG],
                                                 xi=config.tar_xi, epsilon=config.tar_epsilon, is_training=False)
-        return src_pred, tar_pred, loss_y, loss_d, loss_c, loss_v_s, loss_v_t
+        return loss_y, loss_d, loss_c, loss_v_s, loss_v_t
     else:
-        return src_pred, tar_pred, loss_y, loss_d
+        return loss_y, loss_d
 
 
 def vada_optimization(src_x, src_y, tar_x, lambda_d=0.1):
@@ -121,14 +122,14 @@ def vada_optimization(src_x, src_y, tar_x, lambda_d=0.1):
         # Loss function declaration
         #
         rets = get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, src_x, src_y, tar_x)
-        loss_y = rets[2]
-        loss_d = rets[3]
+        loss_y = rets[0]
+        loss_d = rets[1]
         loss = loss_y + lambda_d * loss_d
 
         if config.model_used == 'VADA' or 'DIRT-T':
-            loss_c = rets[4]
-            loss_v_s = rets[5]
-            loss_v_t = rets[6]
+            loss_c = rets[2]
+            loss_v_s = rets[3]
+            loss_v_t = rets[4]
             loss += config.lambda_s * loss_v_s + config.lambda_t * (loss_v_t + loss_c)
             
         dis_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(src_dis), logits=src_dis) +
@@ -144,6 +145,9 @@ def vada_optimization(src_x, src_y, tar_x, lambda_d=0.1):
     # Compute gradients.
     adpt_gradients = adpt_tape.gradient(loss, trainable_variables)
     adpt_optimizer.apply_gradients(zip(adpt_gradients, trainable_variables))
+
+    ema.apply(modelD.trainable_variables)
+    ema.apply(trainable_variables)
 
 
 def dirtt_optimization(prev_tar_pred, tar_x, lambda_t=0.1, beta_t=0.1):
@@ -173,6 +177,8 @@ def dirtt_optimization(prev_tar_pred, tar_x, lambda_t=0.1, beta_t=0.1):
     adpt_gradients = adpt_tape.gradient(loss, trainable_variables)
     adpt_optimizer.apply_gradients(zip(adpt_gradients, trainable_variables))
 
+    ema.apply(trainable_variables)
+
     return tar_pred
 
 
@@ -187,19 +193,17 @@ def testing(model_type):
     tar_dis = modelD(target_embed, activate='', training=True)
 
     rets = get_pred_n_loss(src_pred, tar_pred, src_dis, tar_dis, batch_src_x, batch_src_y, batch_tar_x)
-    batch_src_pred = rets[0]
-    batch_tar_pred = rets[1]
-    loss_y = rets[2]
-    loss_d = rets[3]
+    loss_y = rets[0]
+    loss_d = rets[1]
 
-    batch_src_acc = utils.accuracy(batch_src_pred, batch_src_y)
-    batch_tar_acc = utils.accuracy(batch_tar_pred, batch_tar_y)
+    batch_src_acc = utils.accuracy(src_pred, batch_src_y)
+    batch_tar_acc = utils.accuracy(tar_pred, batch_tar_y)
 
     loss = loss_y + config.lambda_d * loss_d
     if config.model_used == 'VADA' or 'DIRT-T':
-        loss_c = rets[4]
-        loss_v_s = rets[5]
-        loss_v_t = rets[6]
+        loss_c = rets[2]
+        loss_v_s = rets[3]
+        loss_v_t = rets[4]
         loss += config.lambda_s * loss_v_s + config.lambda_t * (loss_v_t + loss_c)
         print("%s => step: %i, loss: %f, loss_y: %f, loss_d: %f, loss_v_s: %f, loss_v_t: %f, loss_c: %f, src_acc: %f, tar_acc: %f" %
               (model_type, step, loss, loss_y, loss_d, loss_v_s, loss_v_t, loss_c, batch_src_acc, batch_tar_acc))
